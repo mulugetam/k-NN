@@ -120,13 +120,41 @@ public class FaissMemoryOptimizedSearcher implements VectorSearcher {
     }
 
     private SimdVectorComputeService.SimilarityFunctionType determineNativeFunctionType() {
+        boolean isBF16 = isQuantizerTypeBF16();
         if (vectorSimilarityFunction == VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT) {
-            return SimdVectorComputeService.SimilarityFunctionType.FP16_MAXIMUM_INNER_PRODUCT;
+            return isBF16
+                ? SimdVectorComputeService.SimilarityFunctionType.BF16_MAXIMUM_INNER_PRODUCT
+                : SimdVectorComputeService.SimilarityFunctionType.FP16_MAXIMUM_INNER_PRODUCT;
         } else if (vectorSimilarityFunction == VectorSimilarityFunction.EUCLIDEAN) {
-            return SimdVectorComputeService.SimilarityFunctionType.FP16_L2;
+            return isBF16
+                ? SimdVectorComputeService.SimilarityFunctionType.BF16_L2
+                : SimdVectorComputeService.SimilarityFunctionType.FP16_L2;
         }
 
-        // At the moment, we only support FP16, it's fine to return null.
+        return null;
+    }
+
+    /**
+     * Determine if the underlying scalar quantized flat index uses BF16 quantization.
+     */
+    private boolean isQuantizerTypeBF16() {
+        FaissIndex flatIndex = extractFlatVectorIndex(faissIndex);
+        if (flatIndex instanceof FaissIndexScalarQuantizedFlat sqFlat) {
+            return sqFlat.getQuantizerType() == org.opensearch.knn.memoryoptsearch.faiss.reconstruct.FaissQuantizerType.QT_BF16;
+        }
+        return false;
+    }
+
+    /**
+     * Extract the flat vector storage index from the top-level index hierarchy.
+     */
+    private static FaissIndex extractFlatVectorIndex(FaissIndex faissIndex) {
+        if (faissIndex instanceof FaissIdMapIndex idMapIndex) {
+            FaissIndex nested = idMapIndex.getNestedIndex();
+            if (nested instanceof AbstractFaissHNSWIndex hnswIndex) {
+                return hnswIndex.flatVectors;
+            }
+        }
         return null;
     }
 

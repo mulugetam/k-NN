@@ -76,4 +76,37 @@ public class QuantizedValueReconstructorTests extends KNNTestCase {
         // Validate results
         assertArrayEquals(vector, restoredVector, 1e-6f);
     }
+
+    public void testReconstructBF16() {
+        // Index config
+        final int dimension = 128;
+
+        // Encode a vector
+        final ByteBuffer buffer = ByteBuffer.allocate(dimension * Short.BYTES);
+        buffer.order(ByteOrder.nativeOrder());
+
+        // BF16 encode a vector: BF16 is the upper 16 bits of float32
+        final float[] vector = new float[dimension];
+        for (int i = 0; i < dimension; i++) {
+            final float value = ThreadLocalRandom.current().nextFloat();
+            final int floatBits = Float.floatToIntBits(value);
+            final short bf16Value = (short) ((floatBits >> 16) & 0xFFFF);
+            buffer.putShort(bf16Value);
+            // The expected reconstructed value is the float32 with lower 16 bits zeroed out
+            vector[i] = Float.intBitsToFloat(bf16Value << 16);
+        }
+        final byte[] bf16EncodedBytes = buffer.array();
+
+        // Restore encoded bytes
+        final FaissQuantizedValueReconstructor reconstructor = FaissQuantizedValueReconstructorFactory.create(
+            FaissQuantizerType.QT_BF16,
+            dimension,
+            Float.SIZE / 2
+        );
+        float[] restoredVector = new float[dimension];
+        reconstructor.reconstruct(bf16EncodedBytes, restoredVector);
+
+        // Validate results
+        assertArrayEquals(vector, restoredVector, 1e-6f);
+    }
 }

@@ -9,14 +9,14 @@
  * GitHub history for details.
  */
 
-#ifdef KNN_HAVE_AVX512
+#if defined(KNN_HAVE_AVX512_SPR)
+    // Sapphire Rapids: currently mirrors the AVX-512 FP32 path for both FP16
+    // and BF16. See avx512_spr_simd_similarity_function.cpp for details on
+    // how FP16 L2 could be accelerated ~2x with native _mm512_fmadd_ph.
+    #include "avx512_spr_simd_similarity_function.cpp"
+#elif defined(KNN_HAVE_AVX512)
     #include "avx512_simd_similarity_function.cpp"
-#elif KNN_HAVE_AVX512_SPR
-    // Since we convert FP16 to FP32 then do bulk operation,
-    // we're not really using SPR instruction set.
-    // Therefore, both AVX512 and AVX512_SPR are sharing the same code piece.
-    #include "avx512_simd_similarity_function.cpp"
-#elif KNN_HAVE_ARM_FP16
+#elif defined(KNN_HAVE_ARM_FP16)
     #include "arm_neon_simd_similarity_function.cpp"
 #else
     #include "default_simd_similarity_function.cpp"
