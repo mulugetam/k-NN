@@ -66,10 +66,10 @@ struct AVX512SPRFP16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc,
 
                 // Prefetch 3 iterations ahead
                 if ((i + elemPerLoad) < dim) {
-                    const int32_t pfByteOffset = (i + elemPerLoad) * 2;
+                    const int32_t nextByteOffset = (i + elemPerLoad) * 2;
                     #pragma unroll
                     for (int32_t v = 0; v < vecBlock; ++v) {
-                        __builtin_prefetch(vectors[v] + pfByteOffset, 0, 3);
+                        __builtin_prefetch(vectors[v] + nextByteOffset, 0, 3);
                     }
                     __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
                 }
@@ -184,10 +184,10 @@ struct AVX512SPRFP16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
                 // Prefetch 3 iterations ahead
                 // While we're doing FMA operation, this will help it pull the next elements to fit into L1 cache.
                 if ((i + elemPerLoad) < dim) {
-                    const int32_t pfByteOffset = (i + elemPerLoad) * 2;
+                    const int32_t nextByteOffset = (i + elemPerLoad) * 2;
                     #pragma unroll
                     for (int32_t v = 0; v < vecBlock; ++v) {
-                        __builtin_prefetch(vectors[v] + pfByteOffset, 0, 3);
+                        __builtin_prefetch(vectors[v] + nextByteOffset, 0, 3);
                     }
                     __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
                 }
@@ -300,10 +300,10 @@ struct AVX512BF16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
                 }
 
                 if ((i + elemPerLoad) < dim) {
-                    const int32_t pfByteOffset = (i + elemPerLoad) * 2;
+                    const int32_t nextByteOffset = (i + elemPerLoad) * 2;
                     #pragma unroll
                     for (int32_t v = 0; v < vecBlock; ++v) {
-                        __builtin_prefetch(vectors[v] + pfByteOffset, 0, 3);
+                        __builtin_prefetch(vectors[v] + nextByteOffset, 0, 3);
                     }
                     __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
                 }
@@ -400,10 +400,10 @@ struct AVX512BF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Score
                 }
 
                 if ((i + elemPerLoad) < dim) {
-                    const int32_t pfByteOffset = (i + elemPerLoad) * 2;
+                    const int32_t nextByteOffset = (i + elemPerLoad) * 2;
                     #pragma unroll
                     for (int32_t v = 0; v < vecBlock; ++v) {
-                        __builtin_prefetch(vectors[v] + pfByteOffset, 0, 3);
+                        __builtin_prefetch(vectors[v] + nextByteOffset, 0, 3);
                     }
                     __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
                 }
@@ -411,8 +411,7 @@ struct AVX512BF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Score
                 #pragma unroll
                 for (int32_t v = 0; v < vecBlock; ++v) {
                     __m512 diff = _mm512_sub_ps(q0, vRegs[v]);
-                    sum[v] = _mm512_fmadd_ps(diff, diff, sum[v]);
-                }
+                    sum[v] = _mm512_fmadd_ps(diff, diff, sum[v]); }
             }
 
             // Single masked tail
