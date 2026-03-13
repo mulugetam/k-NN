@@ -32,7 +32,6 @@ struct AVX512SPRFP16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc,
         // Maximum number of elements to load at the same time
         constexpr int32_t elemPerLoad   = 16;
         // Prefetch 3 iterations ahead
-        constexpr int32_t prefetchAhead = 3;
 
         // Pre-compute the mask-free/masked split point once
         const int32_t fullElems = (dim / elemPerLoad) * elemPerLoad;
@@ -66,14 +65,13 @@ struct AVX512SPRFP16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc,
                 }
 
                 // Prefetch 3 iterations ahead
-                const int32_t pfElem = i + prefetchAhead * elemPerLoad;
-                if (pfElem < dim) {
-                    const int32_t pfByteOffset = pfElem * 2;
+                if ((i + elemPerLoad) < dim) {
+                    const int32_t pfByteOffset = (i + elemPerLoad) * 2;
                     #pragma unroll
                     for (int32_t v = 0; v < vecBlock; ++v) {
                         __builtin_prefetch(vectors[v] + pfByteOffset, 0, 3);
                     }
-                    __builtin_prefetch(queryPtr + pfElem, 0, 3);
+                    __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
                 }
 
                 // FMA Operation e.g. IP = IP + q[i] * v[i]
@@ -153,7 +151,6 @@ struct AVX512SPRFP16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
         // Maximum number of elements to load at the same time
         constexpr int32_t elemPerLoad   = 16;
         // Prefetch 3 iterations ahead
-        constexpr int32_t prefetchAhead = 3;
 
         // Pre-compute the mask-free/masked split point once
         const int32_t fullElems = (dim / elemPerLoad) * elemPerLoad;
@@ -186,14 +183,13 @@ struct AVX512SPRFP16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
 
                 // Prefetch 3 iterations ahead
                 // While we're doing FMA operation, this will help it pull the next elements to fit into L1 cache.
-                const int32_t pfElem = i + prefetchAhead * elemPerLoad;
-                if (pfElem < dim) {
-                    const int32_t pfByteOffset = pfElem * 2;
+                if ((i + elemPerLoad) < dim) {
+                    const int32_t pfByteOffset = (i + elemPerLoad) * 2;
                     #pragma unroll
                     for (int32_t v = 0; v < vecBlock; ++v) {
                         __builtin_prefetch(vectors[v] + pfByteOffset, 0, 3);
                     }
-                    __builtin_prefetch(queryPtr + pfElem, 0, 3);
+                    __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
                 }
 
                 // L2 MATH: (q - v)^2 + sum
@@ -277,7 +273,6 @@ struct AVX512BF16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
 
         constexpr int32_t vecBlock      = 8;
         constexpr int32_t elemPerLoad   = 16;
-        constexpr int32_t prefetchAhead = 3;
 
         const int32_t fullElems = (dim / elemPerLoad) * elemPerLoad;
         const int32_t tailRem   = dim - fullElems;
@@ -304,14 +299,13 @@ struct AVX512BF16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
                     vRegs[v] = cvtbf16_ps(_mm256_loadu_si256((const __m256i*)(vectors[v] + 2 * i)));
                 }
 
-                const int32_t pfElem = i + prefetchAhead * elemPerLoad;
-                if (pfElem < dim) {
-                    const int32_t pfByteOffset = pfElem * 2;
+                if ((i + elemPerLoad) < dim) {
+                    const int32_t pfByteOffset = (i + elemPerLoad) * 2;
                     #pragma unroll
                     for (int32_t v = 0; v < vecBlock; ++v) {
                         __builtin_prefetch(vectors[v] + pfByteOffset, 0, 3);
                     }
-                    __builtin_prefetch(queryPtr + pfElem, 0, 3);
+                    __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
                 }
 
                 #pragma unroll
@@ -379,7 +373,6 @@ struct AVX512BF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Score
 
         constexpr int32_t vecBlock      = 8;
         constexpr int32_t elemPerLoad   = 16;
-        constexpr int32_t prefetchAhead = 3;
 
         const int32_t fullElems = (dim / elemPerLoad) * elemPerLoad;
         const int32_t tailRem   = dim - fullElems;
@@ -406,14 +399,13 @@ struct AVX512BF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Score
                     vRegs[v] = cvtbf16_ps(_mm256_loadu_si256((const __m256i*)(vectors[v] + 2 * i)));
                 }
 
-                const int32_t pfElem = i + prefetchAhead * elemPerLoad;
-                if (pfElem < dim) {
-                    const int32_t pfByteOffset = pfElem * 2;
+                if ((i + elemPerLoad) < dim) {
+                    const int32_t pfByteOffset = (i + elemPerLoad) * 2;
                     #pragma unroll
                     for (int32_t v = 0; v < vecBlock; ++v) {
                         __builtin_prefetch(vectors[v] + pfByteOffset, 0, 3);
                     }
-                    __builtin_prefetch(queryPtr + pfElem, 0, 3);
+                    __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
                 }
 
                 #pragma unroll
