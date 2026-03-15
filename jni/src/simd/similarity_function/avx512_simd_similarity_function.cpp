@@ -22,21 +22,21 @@ struct AVX512SPRFP16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc,
                                    int32_t* internalVectorIds,
                                    float* scores,
                                    const int32_t numVectors) {
-
+        
+        // How many vectors are processed so far?
         int32_t processedCount = 0;
         const auto* queryPtr = (const float*) srchContext->queryVectorSimdAligned;
         const int32_t dim = srchContext->dimension;
 
         // Use 8 to keep the register pressure low
-        constexpr int32_t vecBlock      = 8;
+        constexpr int32_t vecBlock = 8;
         // Maximum number of elements to load at the same time
         constexpr int32_t elemPerLoad   = 16;
-        // Prefetch 3 iterations ahead
 
-        // Pre-compute the mask-free/masked split point once
-        const int32_t fullElems = (dim / elemPerLoad) * elemPerLoad;
-        const int32_t tailRem   = dim - fullElems;
-        const __mmask16 tailMask = tailRem > 0 ? (__mmask16)((1U << tailRem) - 1) : 0;
+        // SIMD-aligned dim, tail dim, and pre-compute tail mask
+        const int32_t alignedDim = (dim / elemPerLoad) * elemPerLoad;
+        const int32_t tailDim   = dim - alignedDim;
+        const __mmask16 tailMask = tailDim > 0 ? (__mmask16)((1U << tailDim) - 1) : 0;
 
         // Tracking accumulated summation per each vector
         // FYI : IP = Sum(v1[i] * v2[i])
@@ -52,8 +52,8 @@ struct AVX512SPRFP16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc,
                 sum[v] = _mm512_setzero_ps();
             }
 
-            // Mask-free hot loop
-            for (int32_t i = 0; i < fullElems; i += elemPerLoad) {
+            // A no-mask hot-loop
+            for (int32_t i = 0; i < alignedDim; i += elemPerLoad) {
                 __m512 q0 = _mm512_loadu_ps(queryPtr + i);
 
                 __m512 vRegs[vecBlock];
@@ -64,7 +64,8 @@ struct AVX512SPRFP16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc,
                     vRegs[v] = _mm512_cvtph_ps(_mm256_loadu_si256((const __m256i*)(vectors[v] + 2 * i)));
                 }
 
-                // Prefetch 3 iterations ahead
+                // Trigger prefetch for the next elements (For the next iteration: +16 elements = +32 bytes)
+                // While we're doing FMA operation, this will help it pull the next elements to fit into L1 cache.
                 if ((i + elemPerLoad) < dim) {
                     const int32_t nextByteOffset = (i + elemPerLoad) * 2;
                     #pragma unroll
@@ -81,14 +82,14 @@ struct AVX512SPRFP16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc,
                 }
             }
 
-            // Single masked tail (executes 0 or 1 times)
-            if (tailRem > 0) {
-                __m512 q0 = _mm512_maskz_loadu_ps(tailMask, queryPtr + fullElems);
+            // Single masked tail
+            if (tailDim > 0) {
+                __m512 q0 = _mm512_maskz_loadu_ps(tailMask, queryPtr + alignedDim);
 
                 __m512 vRegs[vecBlock];
                 #pragma unroll
                 for (int32_t v = 0; v < vecBlock; ++v) {
-                    vRegs[v] = _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(tailMask, vectors[v] + 2 * fullElems));
+                    vRegs[v] = _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(tailMask, vectors[v] + 2 * alignedDim));
                 }
 
                 #pragma unroll
@@ -107,21 +108,19 @@ struct AVX512SPRFP16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc,
 
         // Tail loop for remaining vectors
         for (; processedCount < numVectors; ++processedCount) {
+            // Get vector
             const auto* vecPtr = (const uint8_t*) srchContext->getVectorPointer(internalVectorIds[processedCount]);
             __m512 sumScalar = _mm512_setzero_ps();
 
-            for (int32_t i = 0; i < fullElems; i += elemPerLoad) {
-                // Have N FP32 values from query
+            for (int32_t i = 0; i < alignedDim; i += elemPerLoad) {
                 __m512 q = _mm512_loadu_ps(queryPtr + i);
-                // Have N FP32 values from vector
                 __m512 v = _mm512_cvtph_ps(_mm256_loadu_si256((const __m256i*)(vecPtr + 2 * i)));
-                // Do FMA e.g. IP = IP + q[i] * v[i]
                 sumScalar = _mm512_fmadd_ps(q, v, sumScalar);
             }
 
-            if (tailRem > 0) {
-                __m512 q = _mm512_maskz_loadu_ps(tailMask, queryPtr + fullElems);
-                __m512 v = _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(tailMask, vecPtr + 2 * fullElems));
+            if (tailDim > 0) {
+                __m512 q = _mm512_maskz_loadu_ps(tailMask, queryPtr + alignedDim);
+                __m512 v = _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(tailMask, vecPtr + 2 * alignedDim));
                 sumScalar = _mm512_fmadd_ps(q, v, sumScalar);
             }
 
@@ -147,15 +146,14 @@ struct AVX512SPRFP16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
         const int32_t dim = srchContext->dimension;
 
         // Use 8 to keep the register pressure low
-        constexpr int32_t vecBlock      = 8;
+        constexpr int32_t vecBlock = 8;
         // Maximum number of elements to load at the same time
-        constexpr int32_t elemPerLoad   = 16;
-        // Prefetch 3 iterations ahead
+        constexpr int32_t elemPerLoad = 16;
 
-        // Pre-compute the mask-free/masked split point once
-        const int32_t fullElems = (dim / elemPerLoad) * elemPerLoad;
-        const int32_t tailRem   = dim - fullElems;
-        const __mmask16 tailMask = tailRem > 0 ? (__mmask16)((1U << tailRem) - 1) : 0;
+        // SIMD-aligned dim, tail dim, and pre-compute tail mask
+        const int32_t alignedDim = (dim / elemPerLoad) * elemPerLoad;
+        const int32_t tailDim   = dim - alignedDim;
+        const __mmask16 tailMask = tailDim > 0 ? (__mmask16)((1U << tailDim) - 1) : 0;
 
         // L2 partial sum tracking per each vector
         __m512 sum[vecBlock];
@@ -171,17 +169,19 @@ struct AVX512SPRFP16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
             }
 
             // Mask-free hot loop
-            for (int32_t i = 0; i < fullElems; i += elemPerLoad) {
+            for (int32_t i = 0; i < alignedDim; i += elemPerLoad) {
                 // Load queries
                 __m512 q0 = _mm512_loadu_ps(queryPtr + i);
 
+                // Convert N FP16 values to FP32 values per each vector.
+                // vRegs[i] will hold N FP32 converted values from ith vector.
                 __m512 vRegs[vecBlock];
                 #pragma unroll
                 for (int32_t v = 0; v < vecBlock; ++v) {
                     vRegs[v] = _mm512_cvtph_ps(_mm256_loadu_si256((const __m256i*)(vectors[v] + 2 * i)));
                 }
 
-                // Prefetch 3 iterations ahead
+                // Trigger prefetch for the next elements (For the next iteration: +16 elements = +32 bytes)
                 // While we're doing FMA operation, this will help it pull the next elements to fit into L1 cache.
                 if ((i + elemPerLoad) < dim) {
                     const int32_t nextByteOffset = (i + elemPerLoad) * 2;
@@ -195,19 +195,21 @@ struct AVX512SPRFP16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
                 // L2 MATH: (q - v)^2 + sum
                 #pragma unroll
                 for (int32_t v = 0; v < vecBlock; ++v) {
+                    // Compute difference: diff = q - v
                     __m512 diff = _mm512_sub_ps(q0, vRegs[v]);
+                    // Square and Accumulate: sum = (diff * diff) + sum
                     sum[v] = _mm512_fmadd_ps(diff, diff, sum[v]);
                 }
             }
 
             // Single masked tail
-            if (tailRem > 0) {
-                __m512 q0 = _mm512_maskz_loadu_ps(tailMask, queryPtr + fullElems);
+            if (tailDim > 0) {
+                __m512 q0 = _mm512_maskz_loadu_ps(tailMask, queryPtr + alignedDim);
 
                 __m512 vRegs[vecBlock];
                 #pragma unroll
                 for (int32_t v = 0; v < vecBlock; ++v) {
-                    vRegs[v] = _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(tailMask, vectors[v] + 2 * fullElems));
+                    vRegs[v] = _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(tailMask, vectors[v] + 2 * alignedDim));
                 }
 
                 #pragma unroll
@@ -230,7 +232,7 @@ struct AVX512SPRFP16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
             const auto* vecPtr = (const uint8_t*) srchContext->getVectorPointer(internalVectorIds[processedCount]);
             __m512 sumScalar = _mm512_setzero_ps();
 
-            for (int32_t i = 0; i < fullElems; i += elemPerLoad) {
+            for (int32_t i = 0; i < alignedDim; i += elemPerLoad) {
                 // Have N FP32 values from query
                 __m512 q = _mm512_loadu_ps(queryPtr + i);
                 // Have N FP32 values from vector
@@ -240,9 +242,9 @@ struct AVX512SPRFP16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
                 sumScalar = _mm512_fmadd_ps(diff, diff, sumScalar);
             }
 
-            if (tailRem > 0) {
-                __m512 q = _mm512_maskz_loadu_ps(tailMask, queryPtr + fullElems);
-                __m512 v = _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(tailMask, vecPtr + 2 * fullElems));
+            if (tailDim > 0) {
+                __m512 q = _mm512_maskz_loadu_ps(tailMask, queryPtr + alignedDim);
+                __m512 v = _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(tailMask, vecPtr + 2 * alignedDim));
                 __m512 diff = _mm512_sub_ps(q, v);
                 sumScalar = _mm512_fmadd_ps(diff, diff, sumScalar);
             }
@@ -274,9 +276,10 @@ struct AVX512BF16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
         constexpr int32_t vecBlock      = 8;
         constexpr int32_t elemPerLoad   = 16;
 
-        const int32_t fullElems = (dim / elemPerLoad) * elemPerLoad;
-        const int32_t tailRem   = dim - fullElems;
-        const __mmask16 tailMask = tailRem > 0 ? (__mmask16)((1U << tailRem) - 1) : 0;
+        // SIMD-aligned dim, tail dim, and pre-compute tail mask
+        const int32_t alignedDim = (dim / elemPerLoad) * elemPerLoad;
+        const int32_t tailDim   = dim - alignedDim;
+        const __mmask16 tailMask = tailDim > 0 ? (__mmask16)((1U << tailDim) - 1) : 0;
 
         __m512 sum[vecBlock];
 
@@ -290,7 +293,7 @@ struct AVX512BF16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
             }
 
             // Mask-free hot loop
-            for (int32_t i = 0; i < fullElems; i += elemPerLoad) {
+            for (int32_t i = 0; i < alignedDim; i += elemPerLoad) {
                 __m512 q0 = _mm512_loadu_ps(queryPtr + i);
 
                 __m512 vRegs[vecBlock];
@@ -315,13 +318,13 @@ struct AVX512BF16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
             }
 
             // Single masked tail
-            if (tailRem > 0) {
-                __m512 q0 = _mm512_maskz_loadu_ps(tailMask, queryPtr + fullElems);
+            if (tailDim > 0) {
+                __m512 q0 = _mm512_maskz_loadu_ps(tailMask, queryPtr + alignedDim);
 
                 __m512 vRegs[vecBlock];
                 #pragma unroll
                 for (int32_t v = 0; v < vecBlock; ++v) {
-                    vRegs[v] = cvtbf16_ps(_mm256_maskz_loadu_epi16(tailMask, vectors[v] + 2 * fullElems));
+                    vRegs[v] = cvtbf16_ps(_mm256_maskz_loadu_epi16(tailMask, vectors[v] + 2 * alignedDim));
                 }
 
                 #pragma unroll
@@ -341,15 +344,15 @@ struct AVX512BF16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
             const auto* vecPtr = (const uint8_t*) srchContext->getVectorPointer(internalVectorIds[processedCount]);
             __m512 sumScalar = _mm512_setzero_ps();
 
-            for (int32_t i = 0; i < fullElems; i += elemPerLoad) {
+            for (int32_t i = 0; i < alignedDim; i += elemPerLoad) {
                 __m512 q = _mm512_loadu_ps(queryPtr + i);
                 __m512 v = cvtbf16_ps(_mm256_loadu_si256((const __m256i*)(vecPtr + 2 * i)));
                 sumScalar = _mm512_fmadd_ps(q, v, sumScalar);
             }
 
-            if (tailRem > 0) {
-                __m512 q = _mm512_maskz_loadu_ps(tailMask, queryPtr + fullElems);
-                __m512 v = cvtbf16_ps(_mm256_maskz_loadu_epi16(tailMask, vecPtr + 2 * fullElems));
+            if (tailDim > 0) {
+                __m512 q = _mm512_maskz_loadu_ps(tailMask, queryPtr + alignedDim);
+                __m512 v = cvtbf16_ps(_mm256_maskz_loadu_epi16(tailMask, vecPtr + 2 * alignedDim));
                 sumScalar = _mm512_fmadd_ps(q, v, sumScalar);
             }
 
@@ -374,9 +377,10 @@ struct AVX512BF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Score
         constexpr int32_t vecBlock      = 8;
         constexpr int32_t elemPerLoad   = 16;
 
-        const int32_t fullElems = (dim / elemPerLoad) * elemPerLoad;
-        const int32_t tailRem   = dim - fullElems;
-        const __mmask16 tailMask = tailRem > 0 ? (__mmask16)((1U << tailRem) - 1) : 0;
+        // SIMD-aligned dim, tail dim, and pre-compute tail mask
+        const int32_t alignedDim = (dim / elemPerLoad) * elemPerLoad;
+        const int32_t tailDim   = dim - alignedDim;
+        const __mmask16 tailMask = tailDim > 0 ? (__mmask16)((1U << tailDim) - 1) : 0;
 
         __m512 sum[vecBlock];
 
@@ -390,7 +394,7 @@ struct AVX512BF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Score
             }
 
             // Mask-free hot loop
-            for (int32_t i = 0; i < fullElems; i += elemPerLoad) {
+            for (int32_t i = 0; i < alignedDim; i += elemPerLoad) {
                 __m512 q0 = _mm512_loadu_ps(queryPtr + i);
 
                 __m512 vRegs[vecBlock];
@@ -415,13 +419,13 @@ struct AVX512BF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Score
             }
 
             // Single masked tail
-            if (tailRem > 0) {
-                __m512 q0 = _mm512_maskz_loadu_ps(tailMask, queryPtr + fullElems);
+            if (tailDim > 0) {
+                __m512 q0 = _mm512_maskz_loadu_ps(tailMask, queryPtr + alignedDim);
 
                 __m512 vRegs[vecBlock];
                 #pragma unroll
                 for (int32_t v = 0; v < vecBlock; ++v) {
-                    vRegs[v] = cvtbf16_ps(_mm256_maskz_loadu_epi16(tailMask, vectors[v] + 2 * fullElems));
+                    vRegs[v] = cvtbf16_ps(_mm256_maskz_loadu_epi16(tailMask, vectors[v] + 2 * alignedDim));
                 }
 
                 #pragma unroll
@@ -442,16 +446,16 @@ struct AVX512BF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Score
             const auto* vecPtr = (const uint8_t*) srchContext->getVectorPointer(internalVectorIds[processedCount]);
             __m512 sumScalar = _mm512_setzero_ps();
 
-            for (int32_t i = 0; i < fullElems; i += elemPerLoad) {
+            for (int32_t i = 0; i < alignedDim; i += elemPerLoad) {
                 __m512 q = _mm512_loadu_ps(queryPtr + i);
                 __m512 v = cvtbf16_ps(_mm256_loadu_si256((const __m256i*)(vecPtr + 2 * i)));
                 __m512 diff = _mm512_sub_ps(q, v);
                 sumScalar = _mm512_fmadd_ps(diff, diff, sumScalar);
             }
 
-            if (tailRem > 0) {
-                __m512 q = _mm512_maskz_loadu_ps(tailMask, queryPtr + fullElems);
-                __m512 v = cvtbf16_ps(_mm256_maskz_loadu_epi16(tailMask, vecPtr + 2 * fullElems));
+            if (tailDim > 0) {
+                __m512 q = _mm512_maskz_loadu_ps(tailMask, queryPtr + alignedDim);
+                __m512 v = cvtbf16_ps(_mm256_maskz_loadu_epi16(tailMask, vecPtr + 2 * alignedDim));
                 __m512 diff = _mm512_sub_ps(q, v);
                 sumScalar = _mm512_fmadd_ps(diff, diff, sumScalar);
             }
