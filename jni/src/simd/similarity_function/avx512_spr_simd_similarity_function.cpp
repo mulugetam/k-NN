@@ -67,7 +67,7 @@ struct AVX512SPRFP16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc,
         const auto* queryPtr = (const float*) srchContext->queryVectorSimdAligned;
         const int32_t dim = srchContext->dimension;
 
-        constexpr int32_t vecBlock    = 8;
+        constexpr int32_t vecBlock = 8;
         constexpr int32_t elemPerLoad = 32;
 
         // SIMD-aligned dim and tail dim
@@ -107,7 +107,7 @@ struct AVX512SPRFP16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc,
                     for (int32_t v = 0; v < vecBlock; ++v) {
                         __builtin_prefetch(vectors[v] + nextByteOffset, 0, 3);
                     }
-                    __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
+                    __builtin_prefetch(queryPtr + i + elemPerLoad, 0, 3);
                 }
 
                 #pragma unroll
@@ -257,7 +257,7 @@ struct AVX512SPRFP16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
                     for (int32_t v = 0; v < vecBlock; ++v) {
                         __builtin_prefetch(vectors[v] + nextByteOffset, 0, 3);
                     }
-                    __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
+                    __builtin_prefetch(queryPtr + i + elemPerLoad, 0, 3);
                 }
 
                 #pragma unroll
@@ -370,7 +370,7 @@ struct AVX512BF16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
         const auto* queryPtr = (const float*) srchContext->queryVectorSimdAligned;
         const int32_t dim = srchContext->dimension;
 
-        constexpr int32_t vecBlock    = 8;
+        constexpr int32_t vecBlock = 8;
         constexpr int32_t elemPerLoad = 32;
 
         // SIMD-aligned dim and tail dim
@@ -406,7 +406,7 @@ struct AVX512BF16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc, Sc
                     for (int32_t v = 0; v < vecBlock; ++v) {
                         __builtin_prefetch(vectors[v] + nextByteOffset, 0, 3);
                     }
-                    __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
+                    __builtin_prefetch(queryPtr + i + elemPerLoad, 0, 3);
                 }
 
                 #pragma unroll
@@ -495,7 +495,7 @@ struct AVX512BF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Score
         const auto* queryPtr = (const float*) srchContext->queryVectorSimdAligned;
         const int32_t dim = srchContext->dimension;
 
-        constexpr int32_t vecBlock    = 8;
+        constexpr int32_t vecBlock = 8;
         constexpr int32_t elemPerLoad = 16;
 
         // SIMD-aligned dim and tail dim
@@ -532,7 +532,7 @@ struct AVX512BF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, Score
                     for (int32_t v = 0; v < vecBlock; ++v) {
                         __builtin_prefetch(vectors[v] + nextByteOffset, 0, 3);
                     }
-                    __builtin_prefetch(queryPtr + (i + elemPerLoad), 0, 3);
+                    __builtin_prefetch(queryPtr + i + elemPerLoad, 0, 3);
                 }
 
                 #pragma unroll
