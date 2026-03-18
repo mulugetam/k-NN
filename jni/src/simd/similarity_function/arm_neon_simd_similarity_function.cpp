@@ -167,12 +167,69 @@ ArmNeonFP16MaxIP<FaissScoreToLuceneScoreTransform::ipToMaxIpTransformBulk, Faiss
 // 2. L2
 ArmNeonFP16L2<FaissScoreToLuceneScoreTransform::l2TransformBulk, FaissScoreToLuceneScoreTransform::l2Transform> FP16_L2_SIMIL_FUNC;
 
+
+//
+// BF16
+// BF16 uses the Faiss SQDistanceComputer for both single and bulk similarity calculations,
+// similar to FP16 L2 approach. Faiss internally handles the BF16-to-float conversion.
+//
+
+template <BulkScoreTransform BulkScoreTransformFunc, ScoreTransform ScoreTransformFunc>
+struct ArmNeonBF16MaxIP final : BaseSimilarityFunction<BulkScoreTransformFunc, ScoreTransformFunc> {
+    void calculateSimilarityInBulk(SimdVectorSearchContext* srchContext,
+                                   int32_t* internalVectorIds,
+                                   float* scores,
+                                   const int32_t numVectors) {
+        // Prepare similarity calculation
+        auto func = dynamic_cast<faiss::ScalarQuantizer::SQDistanceComputer*>(srchContext->faissFunction.get());
+        knn_jni::util::ParameterCheck::require_non_null(
+            func, "Unexpected distance function acquired. Expected SQDistanceComputer, but it was something else");
+
+        for (int32_t i = 0 ; i < numVectors ; ++i) {
+            auto vector = reinterpret_cast<uint8_t*>(srchContext->getVectorPointer(internalVectorIds[i]));
+            scores[i] = func->query_to_code(vector);
+        }
+
+        BulkScoreTransformFunc(scores, numVectors);
+    }
+};
+
+template <BulkScoreTransform BulkScoreTransformFunc, ScoreTransform ScoreTransformFunc>
+struct ArmNeonBF16L2 final : BaseSimilarityFunction<BulkScoreTransformFunc, ScoreTransformFunc> {
+    void calculateSimilarityInBulk(SimdVectorSearchContext* srchContext,
+                                   int32_t* internalVectorIds,
+                                   float* scores,
+                                   const int32_t numVectors) {
+        // Prepare similarity calculation
+        auto func = dynamic_cast<faiss::ScalarQuantizer::SQDistanceComputer*>(srchContext->faissFunction.get());
+        knn_jni::util::ParameterCheck::require_non_null(
+            func, "Unexpected distance function acquired. Expected SQDistanceComputer, but it was something else");
+
+        for (int32_t i = 0 ; i < numVectors ; ++i) {
+            auto vector = reinterpret_cast<uint8_t*>(srchContext->getVectorPointer(internalVectorIds[i]));
+            scores[i] = func->query_to_code(vector);
+        }
+
+        BulkScoreTransformFunc(scores, numVectors);
+    }
+};
+
+// BF16 similarity function instances
+// 1. Max IP
+ArmNeonBF16MaxIP<FaissScoreToLuceneScoreTransform::ipToMaxIpTransformBulk, FaissScoreToLuceneScoreTransform::ipToMaxIpTransform> BF16_MAX_INNER_PRODUCT_SIMIL_FUNC;
+// 2. L2
+ArmNeonBF16L2<FaissScoreToLuceneScoreTransform::l2TransformBulk, FaissScoreToLuceneScoreTransform::l2Transform> BF16_L2_SIMIL_FUNC;
+
 #ifndef __NO_SELECT_FUNCTION
 SimilarityFunction* SimilarityFunction::selectSimilarityFunction(const NativeSimilarityFunctionType nativeFunctionType) {
     if (nativeFunctionType == NativeSimilarityFunctionType::FP16_MAXIMUM_INNER_PRODUCT) {
         return &FP16_MAX_INNER_PRODUCT_SIMIL_FUNC;
     } else if (nativeFunctionType == NativeSimilarityFunctionType::FP16_L2) {
         return &FP16_L2_SIMIL_FUNC;
+    } else if (nativeFunctionType == NativeSimilarityFunctionType::BF16_MAXIMUM_INNER_PRODUCT) {
+        return &BF16_MAX_INNER_PRODUCT_SIMIL_FUNC;
+    } else if (nativeFunctionType == NativeSimilarityFunctionType::BF16_L2) {
+        return &BF16_L2_SIMIL_FUNC;
     }
 
     throw std::runtime_error("Invalid native similarity function type was given, nativeFunctionType="

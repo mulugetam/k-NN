@@ -24,6 +24,10 @@ public class SimdVectorComputeService {
         FP16_MAXIMUM_INNER_PRODUCT,
         // FP16 Maximum Inner Product. The result will be the same as we acquired from VectorSimilarityFunction.EUCLIDEAN.
         FP16_L2,
+        // BF16 Maximum Inner Product. The result will be the same as we acquired from VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT.
+        BF16_MAXIMUM_INNER_PRODUCT,
+        // BF16 L2. The result will be the same as we acquired from VectorSimilarityFunction.EUCLIDEAN.
+        BF16_L2,
     }
 
     /**

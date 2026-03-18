@@ -42,6 +42,7 @@ public class MMapFloatVectorValues extends FloatVectorValues implements MMapVect
     // Internal buffer that lazily created.
     private float[] floatBuffer;
     private byte[] bytesBuffer;
+    @Getter
     @Nullable
     private final FaissQuantizedValueReconstructor reconstructor;
 

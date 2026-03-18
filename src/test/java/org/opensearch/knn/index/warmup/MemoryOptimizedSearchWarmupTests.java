@@ -86,6 +86,9 @@ public class MemoryOptimizedSearchWarmupTests extends KNNTestCase {
             // 2x compression - Float HNSW with SQ (Scalar Quantization) FP16
             new Object[] { "2x_compression_fp16", new IndexConfig(VectorDataType.FLOAT, "HNSW16,SQfp16", null) },
 
+            // 2x compression - Float HNSW with SQ (Scalar Quantization) BF16
+            new Object[] { "2x_compression_bf16", new IndexConfig(VectorDataType.FLOAT, "HNSW16,SQbf16", null) },
+
             // 4x compression - Byte vectors (SQ8)
             new Object[] { "4x_compression_byte", new IndexConfig(VectorDataType.BYTE, "HNSW16,SQ8_direct_signed", null) },
 
