@@ -59,6 +59,11 @@ public class FaissMemoryOptimizedSearcher implements VectorSearcher {
         final KNNVectorSimilarityFunction knnVectorSimilarityFunction = faissIndex.getVectorSimilarityFunction();
 
         if (knnVectorSimilarityFunction != KNNVectorSimilarityFunction.HAMMING) {
+            // KNNVectorSimilarityFunction.COSINE.getVectorSimilarityFunction() returns COSINE
+            // for cosinesimil fields. COSINE now routes through the dedicated FP16_COSINE /
+            // SQ_COSINE SIMD kernels (see NativeEngines990KnnVectorsScorer and
+            // KNN1040ScalarQuantizedVectorScorer) which emit (1 + dot) / 2 directly for
+            // L2-normalized vectors, so no remapping is needed here.
             vectorSimilarityFunction = knnVectorSimilarityFunction.getVectorSimilarityFunction();
         } else {
             vectorSimilarityFunction = null;
